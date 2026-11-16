@@ -53,7 +53,8 @@ export async function readAgentSessionHistoryFrame(
             : {})
         }
       },
-      work
+      work,
+      reader.signal
     )
     return {
       ...frame,
@@ -111,7 +112,8 @@ export async function readAgentSessionHydrationFrame(
             : {})
         }
       },
-      work
+      work,
+      reader.signal
     )
     return { ...frame, result: await projectPage(journal, frame.result.page, reader, false) }
   }
