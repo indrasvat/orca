@@ -1,4 +1,7 @@
-import { normalizeRuntimePathSeparators } from '../../../../shared/file-access/cross-platform-path'
+import {
+  isWindowsAbsolutePathLike,
+  normalizeRuntimePathSeparators
+} from '../../../../shared/file-access/cross-platform-path'
 
 /** Encode case-preserving raw paths and NFC variants; comparison keys lose Windows case and macOS can supply NFD. */
 export function encodeClaudeProjectPaths(pathValue: string): string[] {
@@ -13,6 +16,14 @@ export function encodeClaudeProjectPath(pathValue: string): string {
   const trimmed =
     separated === '/' || /^[A-Za-z]:\/$/.test(separated) ? separated : separated.replace(/\/+$/, '')
   return trimmed.replace(/[^a-zA-Z0-9]/g, '-')
+}
+
+/** Whether a bucket is the one Claude names for this folder; Windows folds case, as its paths do. */
+export function isClaudeProjectBucketFor(projectDirName: string, pathValue: string): boolean {
+  const fold = isWindowsAbsolutePathLike(pathValue)
+  return encodeClaudeProjectPaths(pathValue).some((encoded) =>
+    fold ? encoded.toLowerCase() === projectDirName.toLowerCase() : encoded === projectDirName
+  )
 }
 
 // Claude Code names a longer encoded path's bucket `<first 200 characters>-<hash>`; older versions kept the full name.

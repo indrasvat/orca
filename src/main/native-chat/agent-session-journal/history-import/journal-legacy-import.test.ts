@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -151,5 +151,50 @@ it.each([
       expect(JSON.stringify(prepared.ok && prepared.items)).toContain(shows)
     }
     expect(prepared.ok && prepared.sourceEmpty).toBe(sourceEmpty)
+  }
+)
+
+it.each([true, false])(
+  'adopts a Claude conversation recorded in another folder only from the workspace bucket: %s',
+  async (imported) => {
+    const workspaceCwd = join(root, 'moved-wt')
+    await mkdir(workspaceCwd)
+    // Claude names a folder's bucket by replacing each non-alphanumeric character with a dash.
+    const bucket = imported ? workspaceCwd.replace(/[^a-zA-Z0-9]/g, '-') : '-elsewhere'
+    await mkdir(join(root, bucket))
+    const filePath = join(root, bucket, 'claude-moved.jsonl')
+    const recorded = { cwd: '/old/wt', sessionId: 'claude-moved' }
+    await writeFile(
+      filePath,
+      `${[
+        { ...recorded, type: 'user', uuid: 'u1', message: { role: 'user', content: 'hello' } },
+        {
+          ...recorded,
+          type: 'assistant',
+          uuid: 'a1',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] }
+        }
+      ]
+        .map((line) => JSON.stringify(line))
+        .join('\n')}\n`
+    )
+    const prepared = await prepareLegacyTranscriptImport({
+      agent: 'claude',
+      sessionId: 'claude-moved',
+      options: { filePath, source: { providerSessionId: 'claude-moved', workspaceCwd } }
+    })
+    expect(prepared).toMatchObject(
+      imported
+        ? { ok: true, items: [{}, {}] }
+        : {
+            ok: false,
+            cause: {
+              refusal: {
+                code: 'agent_session_identity_required',
+                details: { reason: 'transcriptUnreadable', otherFolder: true }
+              }
+            }
+          }
+    )
   }
 )

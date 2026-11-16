@@ -1,4 +1,6 @@
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { agentSessionRefusalError } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
+import { isClaudeProjectBucketFor } from '../../../ai-vault/scanners/claude/claude-project-dir-encoding'
 import { sessionIdFromFileName } from '../../../ai-vault/parsing/session-scanner-accumulator'
 import type { AgentType } from '../../../../shared/agent-status/contracts/agent-status-types'
 import { normalizeRuntimePathForComparison } from '../../../../shared/file-access/cross-platform-path'
@@ -46,7 +48,11 @@ export async function assertAdoptedSourceIdentity(
       ? await samePiDirectory(actual.cwd, source.workspaceCwd)
       : await adoptedDirectoryProbes.matches(source.workspaceCwd, actual.cwd, signal)
   if (!matched) {
-    throw new Error('This conversation belongs to another directory.')
+    throw agentSessionRefusalError(
+      'agent_session_identity_required',
+      { reason: 'transcriptUnreadable', otherFolder: true },
+      'This conversation belongs to another directory.'
+    )
   }
 }
 
@@ -98,10 +104,14 @@ export function adoptedTranscriptSourceObserver(input: {
       if (input.agent === 'pi' && sessionIdFromFileName(input.filePath) !== sessionId) {
         throw new Error('The saved conversation header does not match its file identity.')
       }
+      // Claude keeps a folder's conversations in that folder's project bucket, where a moved one is copied.
+      const inWorkspaceBucket =
+        input.agent === 'claude' &&
+        isClaudeProjectBucketFor(basename(dirname(input.filePath)), input.source.workspaceCwd)
       await assertAdoptedSourceIdentity(
         input.source,
         { sessionId, cwd },
-        input.agent !== 'codex',
+        input.agent !== 'codex' && !inWorkspaceBucket,
         input.signal,
         input.agent
       )
