@@ -293,11 +293,11 @@ describe('a send to a finished structured worker', () => {
     )
     expect(host.isSessionTabVisible(identity.sessionId)).toBe(false)
 
-    const followUp = sendTo(firstDispatchId, 'and the docs')
+    const followUp = await sendTo(firstDispatchId, 'and the docs')
+    expect(followUp).toMatchObject({ delivery: 'reopened', state: 'ready' })
     await vi.waitFor(() => expect(connectionFor(identity.sessionId).turns).toHaveLength(1), WAIT)
     await settleTurn(identity.sessionId, 0)
 
-    expect(await followUp).toMatchObject({ delivery: 'reopened', state: 'ready' })
     expect(host.isSessionTabVisible(identity.sessionId)).toBe(true)
     // The coordinator's chat shows the reopen, never a newly started worker.
     await vi.waitFor(async () => {
@@ -308,7 +308,7 @@ describe('a send to a finished structured worker', () => {
         expect.objectContaining({ followUp: { of: firstDispatchId, reopened: true } })
       ])
     }, WAIT)
-    expect(db.getWorkerTerminalResourceByOwner(String((await followUp).dispatchId))).toMatchObject({
+    expect(db.getWorkerTerminalResourceByOwner(String(followUp.dispatchId))).toMatchObject({
       terminal_handle: identity.handle,
       ownership_state: 'owned'
     })

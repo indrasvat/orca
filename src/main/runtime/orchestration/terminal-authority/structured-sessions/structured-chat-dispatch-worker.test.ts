@@ -41,7 +41,7 @@ async function runningUserTurn(
   expect(await sendUserMessage(sessionId, 'go')).toMatchObject({ ok: true })
   await vi.waitFor(() => expect(chat.turns).toHaveLength(index + 1), WAIT)
   const notify = (method: string, params: unknown) => chat.handlers.onNotification?.(method, params)
-  notify('turn/started', { turn: { id: `user-${index}` } })
+  notify('turn/started', { turn: { id: `turn-${index + 1}` } })
   notify('item/completed', {
     item: {
       type: 'userMessage',
@@ -52,7 +52,7 @@ async function runningUserTurn(
   })
   await host.flushStreamedEvents(sessionId)
   return async () => {
-    notify('turn/completed', { turn: { id: `user-${index}` } })
+    notify('turn/completed', { turn: { id: `turn-${index + 1}` } })
     await host.flushStreamedEvents(sessionId)
   }
 }

@@ -36,6 +36,9 @@ const RUNS_BOUND_TO_COORDINATOR_SQL = `SELECT ${RUN_COLUMN_LIST} FROM runs
            OR coordinator_orca_session_id = ?
          )
          ORDER BY rowid DESC`
+const RUNS_BOUND_TO_SESSION_SQL = `SELECT ${RUN_COLUMN_LIST} FROM runs
+         WHERE legacy = 0 AND coordinator_orca_session_id = ?
+         ORDER BY rowid DESC`
 
 export function getRun(this: OrchestrationDb, id: string): RunRow | undefined {
   const run = this.getRunRaw(id)
@@ -120,8 +123,17 @@ export function listRuns(
 }
 
 export function getCurrentRunForPane(this: OrchestrationDb, paneKey: string): RunRow | undefined {
-  const run = this.runsBoundToPane(paneKey)[0]
-  return run ? exposeRunTimestamps(run) : undefined
+  for (const row of this.db.prepare(RUNS_BOUND_TO_PANE_SQL).iterate(paneKeyMatchSuffix(paneKey))) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The explicit projection selects the schema-defined Run row.
+    const run = row as RunRow
+    if (
+      run.coordinator_pane_key !== null &&
+      isEquivalentPaneKey(run.coordinator_pane_key, paneKey)
+    ) {
+      return exposeRunTimestamps(run)
+    }
+  }
+  return undefined
 }
 
 // The indexed suffix narrows candidates; pane equivalence still checks remints and exact legacy keys.
@@ -142,8 +154,23 @@ export function getCurrentRunForCoordinator(
   this: OrchestrationDb,
   caller: OrchestrationCoordinatorKey
 ): RunRow | undefined {
-  const run = this.runsBoundToCoordinator(caller)[0]
-  return run ? exposeRunTimestamps(run) : undefined
+  if (caller.orcaSessionId === null) {
+    return caller.paneKey === null ? undefined : this.getCurrentRunForPane(caller.paneKey)
+  }
+  const rows =
+    caller.paneKey === null
+      ? this.db.prepare(RUNS_BOUND_TO_SESSION_SQL).iterate(caller.orcaSessionId)
+      : this.db
+          .prepare(RUNS_BOUND_TO_COORDINATOR_SQL)
+          .iterate(paneKeyMatchSuffix(caller.paneKey), caller.orcaSessionId)
+  for (const row of rows) {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The explicit projection selects the schema-defined Run row.
+    const run = row as RunRow
+    if (runBoundToCoordinator(run, caller)) {
+      return exposeRunTimestamps(run)
+    }
+  }
+  return undefined
 }
 
 /** The named Run when this caller still coordinates it; a coordinator keeps every Run it created. */

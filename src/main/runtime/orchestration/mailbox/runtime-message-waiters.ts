@@ -50,6 +50,7 @@ export type RuntimeMessageWaiter = {
 
 export class RuntimeMessageWaiters {
   private readonly waitersByHandle = new Map<string, Set<RuntimeMessageWaiter>>()
+  private readonly handlesByPrefix = new Map<string, Set<string>>()
 
   notifyRouted(handle: string, types: readonly string[]): void {
     if (types.length === 0) {
@@ -108,6 +109,14 @@ export class RuntimeMessageWaiters {
       if (!waiters) {
         waiters = new Set()
         this.waitersByHandle.set(handle, waiters)
+        for (const prefix of handlePrefixes(handle)) {
+          let handles = this.handlesByPrefix.get(prefix)
+          if (!handles) {
+            handles = new Set()
+            this.handlesByPrefix.set(prefix, handles)
+          }
+          handles.add(handle)
+        }
       }
       waiters.add(waiter)
     })
@@ -125,7 +134,10 @@ export class RuntimeMessageWaiters {
 
   /** Wake the waiters of every handle with this prefix, one notification per handle. */
   notifyPrefix(prefix: string): void {
-    for (const handle of this.waitersByHandle.keys()) {
+    const handles = prefix.endsWith(':')
+      ? (this.handlesByPrefix.get(prefix) ?? [])
+      : this.waitersByHandle.keys()
+    for (const handle of handles) {
       if (handle.startsWith(prefix)) {
         this.notify(handle)
       }
@@ -178,6 +190,19 @@ export class RuntimeMessageWaiters {
     waiters.delete(waiter)
     if (waiters.size === 0) {
       this.waitersByHandle.delete(waiter.handle)
+      for (const prefix of handlePrefixes(waiter.handle)) {
+        const handles = this.handlesByPrefix.get(prefix)
+        handles?.delete(waiter.handle)
+        if (handles?.size === 0) {
+          this.handlesByPrefix.delete(prefix)
+        }
+      }
     }
+  }
+}
+
+function* handlePrefixes(handle: string): IterableIterator<string> {
+  for (let index = handle.indexOf(':'); index !== -1; index = handle.indexOf(':', index + 1)) {
+    yield handle.slice(0, index + 1)
   }
 }

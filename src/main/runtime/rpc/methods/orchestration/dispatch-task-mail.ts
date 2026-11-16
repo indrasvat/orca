@@ -12,17 +12,20 @@ export function queueDispatchTask(args: {
   preamble: string
 }): void {
   const id = `msg_task_${args.dispatch.id}`
+  const stored = args.db.getMessageById(id)
+  if (stored) {
+    args.runtime.notifyMessageArrived(stored.to_handle, stored.type)
+    return
+  }
   const recipient = resolveRunBoundDispatchRecipient(args.runtime, args.db, args.dispatch.id)
   const mailbox = recipient?.to ?? `dispatch:${args.dispatch.id}`
-  if (!args.db.getMessageById(id)) {
-    args.db.insertMessage({
-      id,
-      from: args.from,
-      to: mailbox,
-      subject: 'Task',
-      body: args.preamble,
-      runId: recipient?.runId ?? args.dispatch.run_id
-    })
-  }
-  args.runtime.notifyMessageArrived(args.db.getMessageById(id)?.to_handle ?? mailbox, 'status')
+  const message = args.db.insertMessage({
+    id,
+    from: args.from,
+    to: mailbox,
+    subject: 'Task',
+    body: args.preamble,
+    runId: recipient?.runId ?? args.dispatch.run_id
+  })
+  args.runtime.notifyMessageArrived(message.to_handle, message.type)
 }
