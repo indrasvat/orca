@@ -71,6 +71,8 @@ function agentDiscoveries(
       contentDependencyPath: source.contentDependencyPath,
       directoryPredicate: source.directoryPredicate,
       keepScopeFiles: scopeWalksAgentFiles(agent, options.scopePaths),
+      // Codex hardlink aliases across roots need fresh link counts, which indexed rows lack.
+      statCache: agent === 'codex' && rootDirs.length > 1 ? undefined : options.statCache,
       signal: options.signal
     })
   return source.mergeRootDiscoveries
