@@ -6,7 +6,7 @@ import type { OrchestrationDb } from '../../../orchestration/db/orchestration-db
 import { OrchestrationError } from '../../../orchestration/orchestration-error'
 import type { DispatchContextRow } from '../../../orchestration/db/orchestration-records'
 import type { OrcaRuntimeService } from '../../../orca-runtime'
-import { queueDispatchTask } from '../../../orchestration/coordinator/dispatch/queue-dispatch-task'
+import { queueDispatchTask } from './dispatch-task-mail'
 
 export type ChatTaskDelivery = 'queued'
 

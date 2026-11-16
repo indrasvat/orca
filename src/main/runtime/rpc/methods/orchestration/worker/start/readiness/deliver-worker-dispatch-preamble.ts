@@ -12,7 +12,7 @@ import {
 } from '../../../../../../orchestration/addressing/orchestration-party'
 import { buildDispatchPreamble } from '../../../../../../orchestration/workers/launch/worker-dispatch-preamble'
 import { sendAgentTurn } from '../../../../../../orchestration/turn-delivery/send-agent-turn'
-import { queueDispatchTask } from '../../../../../../orchestration/coordinator/dispatch/queue-dispatch-task'
+import { queueDispatchTask } from '../../../dispatch-task-mail'
 import { createWorkerBriefWriteGuard } from '../../../../../../terminal/wait/launched-agent-write-guard'
 import { sendStructuredWorkerPreamble } from '../../../structured-workers/orchestration-structured-worker-session'
 import { chatAssigneeOf } from '../../../chat-assignee-admission'

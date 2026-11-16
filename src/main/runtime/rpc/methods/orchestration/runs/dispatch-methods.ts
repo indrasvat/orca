@@ -2,7 +2,7 @@ import { defineOrchestrationMethod } from '../access/orchestration-method-access
 import { dispatchAccess } from '../access/run-access-rules'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { buildDispatchPreamble } from '../../../../orchestration/workers/launch/worker-dispatch-preamble'
-import { queueDispatchTask } from '../../../../orchestration/coordinator/dispatch/queue-dispatch-task'
+import { queueDispatchTask } from '../dispatch-task-mail'
 import { resolveDispatchCreator } from './dispatch-creator'
 import {
   injectRejectedError,
