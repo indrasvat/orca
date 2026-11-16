@@ -124,11 +124,8 @@ describe('a chat as the assignee of orchestration dispatch', () => {
           dispatchId: workerRun ? null : dispatchId
         }
       }
-      // On the card's body: the turn the queue sends carries it, and the provider never sees it.
-      await vi.waitFor(async () => {
-        expect((await queuedRows(PEER_CHAT)).map((card) => card.body.from)).toMatchObject([from])
-      }, WAIT)
-      expect(JSON.stringify(await queuedRows(PEER_CHAT))).toContain('build it')
+      await vi.waitFor(async () => expect(await queuedRows(PEER_CHAT)).toHaveLength(1), WAIT)
+      const cards = await queuedRows(PEER_CHAT)
 
       await endTurn()
       await vi.waitFor(() => expect(worker.turns).toHaveLength(2), WAIT)
@@ -136,6 +133,8 @@ describe('a chat as the assignee of orchestration dispatch', () => {
         /^You have 1 orchestration message\. Run `orca(-dev)? orchestration check( --run \S+)?`\.$/
       )
       expect(worker.steers).toEqual([])
+      expect(cards.map((card) => card.body.from)).toMatchObject([from])
+      expect(JSON.stringify(cards)).toContain('build it')
       const checked = await call('orchestration.check', {}, { sessionId: PEER_CHAT })
       expect(checked).toMatchObject({
         count: 1,
