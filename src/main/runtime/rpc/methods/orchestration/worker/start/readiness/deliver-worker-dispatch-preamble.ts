@@ -110,7 +110,10 @@ export async function deliverWorkerDispatchPreamble(args: {
   if (!args.launchedAgent) {
     const dispatch = args.db.getDispatchContextById(args.dispatchId)
     if (!dispatch) {
-      throw new OrchestrationError('dispatch_not_found', `Dispatch ${args.dispatchId} was not found.`)
+      throw new OrchestrationError(
+        'dispatch_not_found',
+        `Dispatch ${args.dispatchId} was not found.`
+      )
     }
     queueDispatchTask({ db: args.db, runtime, dispatch, from: args.coordinatorHandle, preamble })
     return {}

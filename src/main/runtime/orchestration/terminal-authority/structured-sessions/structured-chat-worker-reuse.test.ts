@@ -234,9 +234,12 @@ describe('a send to a finished structured worker', () => {
     })
     expect(isMailPointer(turnText(worker.turns[0]!))).toBe(true)
     expect(await call('orchestration.check', {}, { sessionId: identity.sessionId })).toMatchObject({
-      messages: expect.arrayContaining([expect.objectContaining({
-        subject: 'Task', body: expect.stringContaining('and the docs')
-      })])
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          subject: 'Task',
+          body: expect.stringContaining('and the docs')
+        })
+      ])
     })
     expect(steered).toMatchObject({
       message: { to_handle: `dispatch:${String(followUp.dispatchId)}` }
@@ -271,7 +274,9 @@ describe('a send to a finished structured worker', () => {
     await vi.waitFor(() => expect(worker.turns.length).toBeGreaterThan(1), WAIT)
     expect(worker.turns.slice(1).map(turnText).every(isMailPointer)).toBe(true)
     expect(await call('orchestration.check', {}, { sessionId: identity.sessionId })).toMatchObject({
-      messages: [expect.objectContaining({ subject: 'Task', body: expect.stringContaining('and the docs') })]
+      messages: [
+        expect.objectContaining({ subject: 'Task', body: expect.stringContaining('and the docs') })
+      ]
     })
   })
 
