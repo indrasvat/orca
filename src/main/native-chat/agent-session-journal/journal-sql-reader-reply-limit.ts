@@ -23,14 +23,17 @@ export function journalReaderReplyExceedsLimit(
   return replyBytes(reply, limit).exceeds
 }
 
-/** The walk's bytes, or the serialized size whenever the walk may have missed rows. */
+/**
+ * Never below the serialized size: the walk counts characters, and a two-byte string serializes
+ * at twice that, so walked sizes count at UTF-16 width. Measured whenever the walk may miss rows.
+ */
 function replyBytes(reply: unknown, limit: number): { bytes?: number; exceeds: boolean } {
   if (isRecordSetReply(reply)) {
     return { exceeds: false }
   }
   const shape = describeWorkerMessage(reply)
   if (!shape.truncated && shape.bytes <= limit / 4) {
-    return { bytes: shape.bytes, exceeds: false }
+    return { bytes: shape.bytes * 2, exceeds: false }
   }
   const bytes = serialize(reply).byteLength
   return { bytes, exceeds: bytes > limit }
