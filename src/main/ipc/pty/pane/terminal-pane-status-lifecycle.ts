@@ -8,7 +8,6 @@ import { paneKeyPtyId } from './key-state'
 import { ptyIncarnationById } from '../provider/ownership-state'
 import { isLocalHookConnectionId } from '../../../../shared/agent-hook-listener/transport/wsl-hook-relay-contract'
 import { getProviderForPty } from '../provider/registry'
-import { inspectPtyProviderProcess } from '../../../providers/pty/process-inspection'
 import { isShellProcess } from '../../../../shared/agent-status/process/shell-process-detection'
 import { isRemoteExecutionHostPtyId } from '../../../../shared/execution-host/remote-execution-host-pty-id'
 
@@ -25,14 +24,20 @@ export function bindTerminalPaneStatusLifecycle(
       try {
         const pane = runtime.resolveTerminalPane(paneKey)
         const launch = runtime.getLaunchStatementForPaneKey(paneKey, agent)
-        // A finished command already retired a gone launch; an unknown one (reattach) needs the proof.
-        if (!pane.ptyId || isRemoteExecutionHostPtyId(pane.ptyId) || launch === null) {
+        // A finished/intervening command has already revoked this launch's authority.
+        if (!pane.ptyId || isRemoteExecutionHostPtyId(pane.ptyId) || !launch) {
           return false
         }
-        const shellAlone = await confirmShellAlone(pane.ptyId, pane.incarnationId ?? undefined)
+        const provider = getProviderForPty(pane.ptyId)
+        const [children, foreground] = await Promise.all([
+          provider.hasChildProcesses(pane.ptyId),
+          provider.confirmForegroundProcess?.(pane.ptyId)
+        ])
         const current = runtime.resolveTerminalPane(paneKey)
         return (
-          shellAlone === true &&
+          children === false &&
+          typeof foreground === 'string' &&
+          isShellProcess(foreground) &&
           current.ptyId === pane.ptyId &&
           current.incarnationId === pane.incarnationId &&
           runtime.getLaunchStatementForPaneKey(paneKey, agent) === launch
@@ -108,27 +113,4 @@ export function bindTerminalPaneStatusLifecycle(
     }
   })
   agentHookServer.pruneUnplacedSleepingPanes()
-}
-
-/** The shell alone holds the PTY, with no stopped job behind it. The daemon's proof needs prompt
- *  marks, which cmd and Git Bash often lack; Windows shells stop no jobs, so the host's job census
- *  finding no child beside a shell foreground suffices there. Elsewhere only the host's shell-alone
- *  proof counts; never fall back to a foreground name, which a live unrecognized agent shares. */
-async function confirmShellAlone(ptyId: string, incarnationId?: string): Promise<boolean> {
-  const provider = getProviderForPty(ptyId)
-  if ((await provider.confirmShellForeground?.(ptyId, { noLiveDescendants: true })) === true) {
-    return true
-  }
-  if (process.platform !== 'win32') {
-    return false
-  }
-  const inspection = await inspectPtyProviderProcess(provider, ptyId, {
-    scanChildProcesses: true,
-    ...(incarnationId ? { expectedIncarnationId: incarnationId } : {})
-  })
-  return (
-    inspection.childProcessEvidence === 'no-children' &&
-    typeof inspection.foregroundProcess === 'string' &&
-    isShellProcess(inspection.foregroundProcess)
-  )
 }

@@ -131,9 +131,7 @@ export abstract class OrcaRuntimeWithWorktreeSleepResumeRecording extends OrcaRu
         readRowsForPane: (paneKey) => this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? [],
         readSavedRecord: (paneKey) => this.readSavedResumeSource(worktreeId, paneKey),
         readIdentity: (paneKey, savedRecord) => this.readPaneAgentIdentity(paneKey, savedRecord),
-        checkAgentPresence: (paneKey, since) =>
-          this.checkHookAgentPresenceFn?.(paneKey, since, { sleepCapture: true }) ??
-          Promise.resolve(null),
+        checkAgentPresence: this.checkHookAgentPresenceFn,
         capturedAt: Date.now()
       })
     },
@@ -193,30 +191,24 @@ export abstract class OrcaRuntimeWithWorktreeSleepResumeRecording extends OrcaRu
 
   /** A cleared status leaves the record alone (lost contact is no evidence), as in the window. */
   forgetHookStatusResume(clear: AgentStatusClearIpcPayload): void {
-    if (!('paneKey' in clear)) {
-      for (const [paneKey, status] of this.previousHookStatusByPaneKey) {
-        if (status.connectionId === clear.connectionId) {
-          this.previousHookStatusByPaneKey.delete(paneKey)
-        }
+    for (const [paneKey, status] of this.previousHookStatusByPaneKey) {
+      if (
+        'paneKey' in clear
+          ? paneKey === clear.paneKey &&
+            (!clear.refusedResume ||
+              (!!clear.refusedResume.expectedStatus &&
+                status.updatedAt <= clear.refusedResume.expectedStatus.receivedAt &&
+                status.stateStartedAt === clear.refusedResume.expectedStatus.stateStartedAt &&
+                status.agentType === clear.refusedResume.agent &&
+                agentProviderSessionsEqual(
+                  status.agentType,
+                  status.providerSession,
+                  clear.refusedResume.providerSession
+                )))
+          : status.connectionId === clear.connectionId
+      ) {
+        this.previousHookStatusByPaneKey.delete(paneKey)
       }
-      return
-    }
-    const status = this.previousHookStatusByPaneKey.get(clear.paneKey)
-    const refused = clear.refusedResume
-    if (
-      status &&
-      (!refused ||
-        (!!refused.expectedStatus &&
-          status.updatedAt <= refused.expectedStatus.receivedAt &&
-          status.stateStartedAt === refused.expectedStatus.stateStartedAt &&
-          status.agentType === refused.agent &&
-          agentProviderSessionsEqual(
-            status.agentType,
-            status.providerSession,
-            refused.providerSession
-          )))
-    ) {
-      this.previousHookStatusByPaneKey.delete(clear.paneKey)
     }
   }
 

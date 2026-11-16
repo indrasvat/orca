@@ -71,6 +71,34 @@ export class AgentHookServer extends AgentHookServerLifecycle {
   // A live sender means the owner's exit cannot establish pane exit.
   private readonly ownerChallengesByLiveSender = new Map<string, number>()
 
+  hasVerifiableAgentProcess(paneKey: string): boolean {
+    const presence = this.state.lastStatusByPaneKey.get(
+      this.resolvePaneKeyAlias(paneKey)
+    )?.agentPresence
+    return presence?.process !== undefined && !presence.ended
+  }
+
+  /** Shells without command marks need the owning host's process-tree proof. */
+  async reconcilePaneProcessExit(paneKey: string): Promise<void> {
+    const resolved = this.resolvePaneKeyAlias(paneKey)
+    const row = this.state.lastStatusByPaneKey.get(resolved)
+    const identity = this.paneAgentIdentity(resolved)
+    const agent = identity?.status.agentType
+    const confirmedExit =
+      identity &&
+      agent &&
+      identity.processTopology !== 'shared' &&
+      !this.hasVerifiableAgentProcess(resolved) &&
+      (await this.terminalPaneLifecycle?.confirmProcessExit?.(resolved, agent))
+    if (this.state.lastStatusByPaneKey.get(resolved) !== row) {
+      return
+    }
+    this.reconcileEndedProcessForPaneKeys([resolved], {
+      preserveResumeIdentity: true,
+      confirmedExit: confirmedExit === true
+    })
+  }
+
   /** Pin inspection to this row so a replacement owner cannot become its subject. */
   readCliWriterObservation(expected: AgentStatusIpcPayload): CliWriterObservation | null {
     const resolved = this.resolvePaneKeyAlias(expected.paneKey)
@@ -110,12 +138,11 @@ export class AgentHookServer extends AgentHookServerLifecycle {
   /** Include retained exits proven at or after `exitedSince`. */
   async checkAgentPresenceSince(
     paneKey: string,
-    exitedSince: number,
-    options?: { sleepCapture?: true }
+    exitedSince: number
   ): Promise<AgentProcessVerdict | null> {
     const [verdict] = await Promise.all([
       this.checkAgentPresence(paneKey),
-      this.observeTmuxHostedWriter(paneKey, options?.sleepCapture === true)
+      this.observeTmuxHostedWriter(paneKey)
     ])
     // A replaced owner's probe result counts only if its exit was retained.
     if (verdict !== null && verdict !== 'exited') {
@@ -134,7 +161,7 @@ export class AgentHookServer extends AgentHookServerLifecycle {
 
   /** Legacy hooks cannot say a tmux server hosts them; the pane's foreground client can, before
    *  a sleep or adoption captures the conversation as the pane's own. */
-  private async observeTmuxHostedWriter(paneKey: string, sleepCapture: boolean): Promise<void> {
+  private async observeTmuxHostedWriter(paneKey: string): Promise<void> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: main stores enriched accepted rows in the base-typed cache.
     const row = this.state.lastStatusByPaneKey.get(resolved) as
@@ -142,9 +169,6 @@ export class AgentHookServer extends AgentHookServerLifecycle {
       | undefined
     const binding = row?.providerSession
     const read = this.readPaneTmuxHost
-    if (!row) {
-      return sleepCapture ? this.releaseTmuxHostedCheckpoint(resolved) : undefined
-    }
     if (
       !read ||
       !row ||

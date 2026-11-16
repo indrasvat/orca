@@ -6,7 +6,6 @@ import { paneCacheKeyMatchesTab } from './server-status-identity'
 import { AgentHookServerCleanup, type EndedProcessReconciliationOptions } from './server-cleanup'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { releaseAgentExitKey } from './agent-exit-evidence'
-import type { AgentProcessVerdict } from '../../../shared/agent-status/process/agent-process-presence'
 import { paneHasStateClaims } from '../../../shared/agent-hook-listener/pane-state-claims'
 import type {
   AgentStatusCacheIdentity,
@@ -15,23 +14,20 @@ import type {
 import { agentProviderSessionsEqual } from '../../../shared/agent-session/lifecycle/resume/agent-provider-session-equality'
 
 export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
-  abstract checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null>
-
   retireProcessAuthority(
     paneKey: string,
     options?: Pick<EndedProcessReconciliationOptions, 'confirmedExit'>
   ): void {
     const identity = this.paneAgentIdentity(paneKey)
-    const shared = identity?.processTopology === 'shared'
     const { paneKeys, authorityChanged } = this.revokeProcessAuthority(paneKey)
     const { untouched } = this.reconcileEndedProcess(
       paneKeys,
-      { ...options, preserveResumeIdentity: !options?.confirmedExit && !shared },
+      {
+        ...options,
+        preserveResumeIdentity: !options?.confirmedExit || identity?.processTopology === 'shared'
+      },
       (key) => this.clearRevokedPaneState(key)
     )
-    if (shared) {
-      this.releaseSharedPaneConversation(paneKey, identity.status)
-    }
     for (const key of untouched) {
       this.clearTmuxInnerSubjects(key)
       this.clearPaneProcessState(key)
@@ -39,42 +35,6 @@ export abstract class AgentHookServerTabCleanup extends AgentHookServerCleanup {
     if (authorityChanged) {
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
-    }
-  }
-
-  hasVerifiableAgentProcess(paneKey: string): boolean {
-    const presence = this.state.lastStatusByPaneKey.get(
-      this.resolvePaneKeyAlias(paneKey)
-    )?.agentPresence
-    return presence?.process !== undefined && !presence.ended
-  }
-
-  /** Shells without command marks need the owning host's process-tree proof. */
-  async reconcilePaneProcessExit(paneKey: string): Promise<void> {
-    const resolved = this.resolvePaneKeyAlias(paneKey)
-    // A verifiable process answers for itself (exited, stopped or live); the quiet shell proves nothing.
-    if (this.hasVerifiableAgentProcess(resolved)) {
-      await this.checkAgentPresence(resolved)
-      return
-    }
-    const row = this.state.lastStatusByPaneKey.get(resolved)
-    const identity = this.paneAgentIdentity(resolved)
-    const agent = identity?.status.agentType
-    const shared = identity?.processTopology === 'shared'
-    const confirmedExit =
-      identity &&
-      agent &&
-      !shared &&
-      (await this.terminalPaneLifecycle?.confirmProcessExit?.(resolved, agent))
-    if (this.state.lastStatusByPaneKey.get(resolved) !== row) {
-      return
-    }
-    this.reconcileEndedProcessForPaneKeys([resolved], {
-      preserveResumeIdentity: true,
-      confirmedExit: confirmedExit === true
-    })
-    if (shared) {
-      this.releaseSharedPaneConversation(resolved, identity.status)
     }
   }
 
