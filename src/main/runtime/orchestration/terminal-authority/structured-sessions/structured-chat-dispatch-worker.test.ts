@@ -79,10 +79,13 @@ function dispatchCount(): unknown {
 }
 
 describe('a chat as the assignee of orchestration dispatch', () => {
-  it("shows a busy chat's full task with its sender, delivers only the pointer, and returns the task through check", async () => {
+  it.each([false, true])("shows a busy chat's full task with its sender, delivers only the pointer, and returns the task through check (Run-bound: %s)", async (runBound) => {
     await openChat(COORDINATOR)
     const worker = await openChat(PEER_CHAT)
     const { taskId } = await coordinatorRunAndTask()
+    const workerRun = runBound
+      ? idOf((await call('orchestration.runCreate', { objective: 'worker helpers' }, { sessionId: PEER_CHAT })).run)
+      : null
     const endTurn = await runningUserTurn(PEER_CHAT, worker)
 
     const result = await call(
@@ -105,7 +108,7 @@ describe('a chat as the assignee of orchestration dispatch', () => {
           }
         }
       ],
-      orchestration: { message: 'mail-notice', mailbox: `dispatch:${dispatchId}`, dispatchId }
+      orchestration: { message: 'mail-notice', mailbox: workerRun ? `run:${workerRun}` : `dispatch:${dispatchId}`, dispatchId: workerRun ? null : dispatchId }
     }
     // On the card's body: the turn the queue sends carries it, and the provider never sees it.
     await vi.waitFor(async () => {
@@ -115,7 +118,7 @@ describe('a chat as the assignee of orchestration dispatch', () => {
 
     await endTurn()
     await vi.waitFor(() => expect(worker.turns).toHaveLength(2), WAIT)
-    expect(turnText(worker.turns[1]!)).toMatch(/^You have 1 orchestration message\. Run `orca(-dev)? orchestration check`\.$/)
+    expect(turnText(worker.turns[1]!)).toMatch(/^You have 1 orchestration message\. Run `orca(-dev)? orchestration check( --run \S+)?`\.$/)
     expect(worker.steers).toEqual([])
     const checked = await call('orchestration.check', {}, { sessionId: PEER_CHAT })
     expect(checked).toMatchObject({
@@ -124,6 +127,22 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     })
     expect(await queuedCardTexts(PEER_CHAT)).toEqual([])
     expect(await taskSenders(PEER_CHAT)).toMatchObject([from])
+  })
+
+  it('hands task mail to an adopted user chat before declaring it ready', async () => {
+    await openChat(COORDINATOR)
+    const worker = await openChat(PEER_CHAT)
+    const { taskId } = await coordinatorRunAndTask()
+    vi.spyOn(runtime, 'showManagedTerminalWorkspace').mockResolvedValue({ id: 'workspace-1', repoId: 'repo' } as never)
+
+    const result = await call('orchestration.workerStart', { task: taskId, terminal: WORKER }, { sessionId: COORDINATOR })
+
+    expect(result).toMatchObject({ state: 'ready', turnStart: 'queued' })
+    await vi.waitFor(() => expect(worker.turns).toHaveLength(1), WAIT)
+    expect(isMailPointer(turnText(worker.turns[0]!))).toBe(true)
+    expect(await call('orchestration.check', {}, { sessionId: PEER_CHAT })).toMatchObject({
+      messages: [{ subject: 'Task', body: expect.stringContaining('=== TASK ===\nbuild it') }]
+    })
   })
 
   it('queues one card for one Dispatch however often its task is sent', async () => {
